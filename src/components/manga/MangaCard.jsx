@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MANGA_STATUS_TONE, mangaStatusLabel } from '../../utils/format';
+import { Eye } from 'lucide-react';
+import { MANGA_STATUS_TONE, mangaStatusLabel, formatViews } from '../../utils/format';
 import Badge from '../common/Badge';
 import Cover from '../common/Cover';
 
@@ -61,12 +62,31 @@ export default function MangaCard({ manga, index = 0 }) {
 					<span className="absolute left-3 top-3">
 						<Badge tone={MANGA_STATUS_TONE[manga.status]}>{mangaStatusLabel(manga.status)}</Badge>
 					</span>
+					{manga.latestChapterIndex != null && (
+						<span className="absolute right-3 top-3">
+							<span className="rounded-md border border-white/20 bg-ink-950/80 px-2 py-0.5 text-xs font-semibold text-white backdrop-blur shadow-sm">
+								Ch. {manga.latestChapterIndex}
+							</span>
+						</span>
+					)}
+					{manga.totalViews != null && (
+						<span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md border border-white/10 bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-neutral-300 backdrop-blur">
+							<Eye className="h-3 w-3 text-neutral-400" />
+							{formatViews(manga.totalViews)}
+						</span>
+					)}
 				</div>
 
 				<div className="p-3">
 					<h3 className="line-clamp-2 text-sm font-semibold text-neutral-100 transition-colors duration-200 group-hover:text-white">
 						{manga.name}
 					</h3>
+					<div className="mt-1.5 flex items-center justify-between text-xs text-neutral-400">
+						<span className="flex items-center gap-1">
+							<Eye className="h-3 w-3" />
+							{formatViews(manga.totalViews ?? 0)} lượt xem
+						</span>
+					</div>
 				</div>
 			</Link>
 

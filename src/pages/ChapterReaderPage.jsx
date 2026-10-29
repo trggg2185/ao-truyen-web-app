@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, List, X, RotateCcw, Home, ArrowLeft } from 'lucide-react';
 import { ApiError, chapterApi } from '../api';
 import { resolveMangaId } from '../utils/resolveUrl';
 import { useCurrentUser } from '../hooks/useCurrentUser';
@@ -7,25 +8,112 @@ import Avatar from '../components/common/Avatar';
 import Loading from '../components/common/Loading';
 import ErrorMessage from '../components/common/ErrorMessage';
 
-const BATCH_SIZE = 15; // số ảnh render mỗi lần cuộn
-const FETCH_SIZE = 200; // chương tối đa 150 trang -> lấy hết trong 1 request
 const byChapterIndex = (list) => [...list].sort((a, b) => a.chapterIndex - b.chapterIndex);
 const isMobile = () => window.matchMedia('(max-width: 1023px)').matches;
+
+/**
+ * Component hiển thị từng trang ảnh với cơ chế lazy load chuẩn:
+ * - Giữ chỗ với min-height lớn (tránh hiện tượng dồn chiều cao khiến tất cả trang dưới lọt vào viewport tải ồ ạt)
+ * - Chỉ nạp thẻ ảnh thật khi trang tiến gần vào viewport (rootMargin: 250px)
+ */
+function ReaderImageItem({ page, index, totalPages, setRef }) {
+	const [inView, setInView] = useState(false);
+	const [loaded, setLoaded] = useState(false);
+	const [error, setError] = useState(false);
+	const [retryKey, setRetryKey] = useState(0);
+	const containerRef = useRef(null);
+
+	useEffect(() => {
+		const node = containerRef.current;
+		if (!node || typeof IntersectionObserver === 'undefined') {
+			setInView(true);
+			return;
+		}
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				const entry = entries[0];
+				if (entry.isIntersecting) {
+					setInView(true);
+					observer.disconnect();
+				}
+			},
+			{ rootMargin: '250px' }, // Chỉ kích hoạt khi còn cách màn hình 250px
+		);
+
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, [retryKey]);
+
+	return (
+		<div
+			ref={(node) => {
+				containerRef.current = node;
+				setRef(node);
+			}}
+			data-page-index={index}
+			className={`relative w-full max-w-4xl mx-auto flex flex-col items-center justify-center rounded-lg transition-all duration-300 ${
+				loaded ? 'min-h-0' : 'min-h-[70vh] sm:min-h-[85vh] bg-ink-900/60 border border-white/5'
+			}`}
+		>
+			{!loaded && !error && (
+				<div className="flex flex-col items-center gap-3 text-neutral-500 py-12">
+					<div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+					<p className="text-xs font-medium tracking-wide">
+						Đang tải trang {page.pageNumber} / {totalPages}...
+					</p>
+				</div>
+			)}
+
+			{error && (
+				<div className="flex flex-col items-center gap-3 py-16 text-center">
+					<p className="text-sm text-rose-400 font-medium">Không thể tải trang {page.pageNumber}</p>
+					<button
+						type="button"
+						onClick={() => {
+							setError(false);
+							setLoaded(false);
+							setRetryKey((k) => k + 1);
+						}}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/10"
+					>
+						<RotateCcw className="h-3.5 w-3.5" />
+						Thử tải lại
+					</button>
+				</div>
+			)}
+
+			{inView && (
+				<img
+					key={`${page.id}-${retryKey}`}
+					src={page.imageUrl}
+					alt={`Trang ${page.pageNumber}`}
+					loading="lazy"
+					onLoad={() => setLoaded(true)}
+					onError={() => {
+						setError(true);
+						setLoaded(false);
+					}}
+					className={`w-full max-w-4xl rounded-md transition-opacity duration-300 ${
+						loaded ? 'opacity-100 block' : 'opacity-0 absolute'
+					}`}
+				/>
+			)}
+		</div>
+	);
+}
 
 function ChapterReaderPage() {
 	const { slug, chapterIndex } = useParams();
 	const { data: me } = useCurrentUser();
-	const [pages, setPages] = useState([]); // toàn bộ trang của chương, sort tăng dần
-	const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
+	const [pages, setPages] = useState([]);
 	const [chapters, setChapters] = useState([]);
-	const [status, setStatus] = useState('loading'); // loading | ready | error
+	const [status, setStatus] = useState('loading');
 	const [error, setError] = useState(null);
 	const [open, setOpen] = useState(() =>
 		typeof window === 'undefined' ? true : window.matchMedia('(min-width: 1024px)').matches,
 	);
-	const [pendingPage, setPendingPage] = useState(null);
 	const requestRef = useRef(0);
-	const sentinelRef = useRef(null);
 	const pageRefs = useRef([]);
 
 	const load = useCallback(async () => {
@@ -33,10 +121,8 @@ function ChapterReaderPage() {
 		setStatus('loading');
 		setError(null);
 		setPages([]);
-		setVisibleCount(BATCH_SIZE);
 
 		try {
-			// URL dùng slug + chapterIndex; API vẫn cần manga id + chapter id.
 			const mangaId = await resolveMangaId(slug);
 			if (!mangaId) throw new ApiError('404', 'Không tìm thấy truyện.');
 
@@ -53,10 +139,9 @@ function ChapterReaderPage() {
 			if (requestRef.current !== reqId) return;
 			setChapters(list);
 
-			// Backend trả hết pages trong 1 request (sort pageNumber tăng dần).
 			const result = await chapterApi.getPages(list[index].id, {
 				page: 0,
-				size: FETCH_SIZE,
+				size: 250,
 				sortBy: 'pageNumber',
 			});
 			if (requestRef.current !== reqId) return;
@@ -73,65 +158,8 @@ function ChapterReaderPage() {
 
 	useEffect(() => {
 		window.scrollTo(0, 0);
-		// Reset pages khi đổi chương: setState đồng bộ trong effect là chủ ý.
-		// eslint-disable-next-line react-hooks/set-state-in-effect
 		load();
 	}, [load]);
-
-	// Lazy load phía client: cuộn gần cuối thì render thêm 1 lô ảnh.
-	useEffect(() => {
-		const node = sentinelRef.current;
-		if (!node || visibleCount >= pages.length || typeof IntersectionObserver === 'undefined') return;
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (entries.some((entry) => entry.isIntersecting)) {
-					setVisibleCount((count) => Math.min(count + BATCH_SIZE, pages.length));
-				}
-			},
-			{ rootMargin: '800px' },
-		);
-		observer.observe(node);
-		return () => observer.disconnect();
-	}, [visibleCount, pages.length]);
-
-	// Nhảy tới 1 trang: render đủ lô chứa trang đó, chờ ảnh phía trên tải xong
-	// (chiều cao ảnh quyết định vị trí) rồi cuộn xuống.
-	useEffect(() => {
-		if (pendingPage == null) return;
-		const target = pageRefs.current[pendingPage];
-		if (!target) return;
-
-		const nodes = pageRefs.current.slice(0, pendingPage + 1).filter(Boolean);
-		if (nodes.length < pendingPage + 1) return;
-
-		const finish = () => {
-			target.scrollIntoView({ behavior: 'auto', block: 'start' });
-			setPendingPage(null);
-		};
-
-		const pending = nodes.filter((node) => !node.complete);
-		if (pending.length === 0) {
-			finish();
-			return;
-		}
-
-		let remaining = pending.length;
-		const onDone = () => {
-			remaining -= 1;
-			if (remaining === 0) finish();
-		};
-		pending.forEach((node) => {
-			node.addEventListener('load', onDone, { once: true });
-			node.addEventListener('error', onDone, { once: true });
-		});
-		return () => {
-			pending.forEach((node) => {
-				node.removeEventListener('load', onDone);
-				node.removeEventListener('error', onDone);
-			});
-		};
-	}, [pendingPage, visibleCount]);
 
 	const currentIndex = chapters.findIndex(
 		(chapter) => String(chapter.chapterIndex) === String(chapterIndex),
@@ -146,85 +174,116 @@ function ChapterReaderPage() {
 	};
 
 	const jumpToPage = (index) => {
-		setVisibleCount((count) => Math.max(count, index + 1));
-		setPendingPage(index);
+		const target = pageRefs.current[index];
+		if (target) {
+			target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		}
 		closeOnMobile();
 	};
 
-	if (status === 'loading') return <Loading label="Đang tải chương..." />;
+	if (status === 'loading') return <Loading label="Đang tải chương truyện..." />;
 	if (status === 'error') return <ErrorMessage error={error} onRetry={load} />;
 
 	const navButtonClass =
-		'rounded-lg border border-white/15 px-4 py-2 text-sm text-neutral-200 transition-colors duration-200 hover:border-white/30 hover:bg-white/5';
-	const disabledClass = 'pointer-events-none opacity-40';
-	const visiblePages = pages.slice(0, visibleCount);
+		'inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-ink-900 px-4 py-2.5 text-sm font-semibold text-neutral-200 transition-all duration-200 hover:border-white/30 hover:bg-white/10 hover:text-white shadow-lg';
+	const disabledClass = 'pointer-events-none opacity-30';
 
 	return (
-		<div className="min-h-screen bg-ink-950">
-			{/* Nội dung truyện: chừa chỗ bên phải khi tab mở để trang bị đẩy sang trái. */}
+		<div className="min-h-screen bg-ink-950 text-neutral-100">
+			{/* Top Bar tiện ích khi đọc */}
+			<header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-white/10 bg-ink-950/85 px-4 backdrop-blur-md">
+				<div className="flex items-center gap-3 min-w-0">
+					<Link
+						to={`/mangas/${slug}`}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-neutral-300 transition-colors hover:bg-white/10 hover:text-white"
+					>
+						<ArrowLeft className="h-3.5 w-3.5" />
+						Trở về truyện
+					</Link>
+					<span className="truncate text-sm font-bold text-white">
+						Ảo Truyện <span className="text-neutral-500 font-normal">|</span> Chương {chapterIndex}
+						{current?.title ? ` — ${current.title}` : ''}
+					</span>
+				</div>
+
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={() => setOpen((prev) => !prev)}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-200 transition-colors hover:bg-white/10 hover:text-white"
+					>
+						<List className="h-4 w-4" />
+						<span className="hidden sm:inline">Mục lục</span>
+					</button>
+				</div>
+			</header>
+
+			{/* Nội dung đọc truyện: có padding phải khi mở aside trên desktop */}
 			<div className={`transition-[margin] duration-300 ${open ? 'lg:mr-80' : ''}`}>
-				<div className="mx-auto w-full max-w-4xl px-2 py-3 sm:px-4">
+				<main className="mx-auto w-full max-w-4xl px-2 py-4 sm:px-4">
 					{pages.length === 0 ? (
-						<p className="py-16 text-center text-neutral-500">Chương này chưa có ảnh.</p>
+						<p className="py-20 text-center text-neutral-500 font-medium">Chương này chưa có ảnh.</p>
 					) : (
-						<div className="flex flex-col gap-1">
-							{visiblePages.map((page, index) => (
-								<img
+						<div className="flex flex-col gap-3">
+							{pages.map((page, index) => (
+								<ReaderImageItem
 									key={page.id}
-									ref={(node) => {
+									page={page}
+									index={index}
+									totalPages={pages.length}
+									setRef={(node) => {
 										pageRefs.current[index] = node;
 									}}
-									src={page.imageUrl}
-									alt={`Trang ${page.pageNumber}`}
-									className="w-full rounded-md bg-ink-900"
 								/>
 							))}
 						</div>
 					)}
 
-					<div ref={sentinelRef} className="h-1" />
-
-					<div className="mx-auto mt-8 flex max-w-4xl justify-between gap-2 pb-6">
+					{/* Chuyển chương cuối trang */}
+					<div className="mx-auto mt-10 flex max-w-4xl items-center justify-between gap-3 border-t border-white/10 pt-6 pb-12">
 						<Link
 							to={`/mangas/${slug}/chapters/${prev?.chapterIndex}`}
 							onClick={closeOnMobile}
 							className={`${navButtonClass} ${!prev ? disabledClass : ''}`}
 						>
-							← Chương trước
+							<ChevronLeft className="h-4 w-4" />
+							Chương trước
 						</Link>
+						<span className="text-xs text-neutral-500 font-medium">
+							Chương {chapterIndex} / {chapters.length}
+						</span>
 						<Link
 							to={`/mangas/${slug}/chapters/${next?.chapterIndex}`}
 							onClick={closeOnMobile}
 							className={`${navButtonClass} ${!next ? disabledClass : ''}`}
 						>
-							Chương sau →
+							Chương sau
+							<ChevronRight className="h-4 w-4" />
 						</Link>
 					</div>
-				</div>
+				</main>
 			</div>
 
-			{/* Nền mờ khi tab mở trên mobile; bấm ra ngoài để đóng. */}
+			{/* Nền mờ trên mobile khi mở sidebar */}
 			{open && (
-				<button
-					type="button"
+				<div
 					onClick={() => setOpen(false)}
 					aria-label="Đóng danh sách"
-					className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+					className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
 				/>
 			)}
 
-			{/* Tab bên phải: thông tin user, danh sách chương và danh sách trang. */}
+			{/* Tab bên phải: thông tin user, danh sách chương, danh sách trang */}
 			<aside
 				aria-hidden={!open}
-				inert={!open}
-				className={`fixed inset-y-0 right-0 z-40 flex w-80 max-w-[85vw] flex-col border-l border-white/10 bg-ink-900 transition-transform duration-300 ${
+				className={`fixed inset-y-0 right-0 z-50 flex w-80 max-w-[85vw] flex-col border-l border-white/10 bg-ink-900 shadow-2xl transition-transform duration-300 ${
 					open ? 'translate-x-0' : 'translate-x-full'
 				}`}
 			>
-				<div className="flex items-start justify-between gap-2 border-b border-white/10 p-4">
+				<div className="flex items-center justify-between border-b border-white/10 p-4">
 					<div className="min-w-0">
-						<p className="text-xs text-neutral-500">Đang đọc</p>
-						<p className="truncate text-sm font-semibold text-white">
+						<p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold">Đang đọc</p>
+						<p className="truncate text-sm font-bold text-white">
 							Chương {chapterIndex}
 							{current?.title ? ` — ${current.title}` : ''}
 						</p>
@@ -233,33 +292,35 @@ function ChapterReaderPage() {
 						type="button"
 						onClick={() => setOpen(false)}
 						aria-label="Đóng danh sách"
-						className="shrink-0 rounded-lg border border-white/15 px-2 py-1 text-sm text-neutral-300 transition-colors duration-200 hover:border-white/30 hover:text-white"
+						className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
 					>
-						›
+						<X className="h-5 w-5" />
 					</button>
 				</div>
 
-				<div className="flex-1 overflow-y-auto p-4">
+				<div className="flex-1 overflow-y-auto p-4 space-y-6">
 					{me && (
 						<Link
 							to={`/users/${me.username}`}
-							className="mb-5 flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 transition-colors duration-200 hover:border-white/25 hover:bg-white/10"
+							className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 transition-colors duration-200 hover:border-white/25 hover:bg-white/10"
 						>
 							<Avatar src={me.avatar} name={me.displayName || me.username} size={36} />
 							<span className="min-w-0">
-								<span className="block truncate text-sm font-medium text-white">
+								<span className="block truncate text-sm font-semibold text-white">
 									{me.displayName || me.username}
 								</span>
-								<span className="block text-xs text-neutral-500">Trang cá nhân</span>
+								<span className="block text-xs text-neutral-400">Trang cá nhân</span>
 							</span>
 						</Link>
 					)}
 
 					<section>
-						<h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-							Danh sách chương ({chapters.length})
-						</h2>
-						<ul className="space-y-1">
+						<div className="mb-2.5 flex items-center justify-between">
+							<h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+								Danh sách chương ({chapters.length})
+							</h3>
+						</div>
+						<ul className="space-y-1 max-h-56 overflow-y-auto pr-1">
 							{chapters.map((chapter) => {
 								const active = String(chapter.chapterIndex) === String(chapterIndex);
 								return (
@@ -267,10 +328,10 @@ function ChapterReaderPage() {
 										<Link
 											to={`/mangas/${slug}/chapters/${chapter.chapterIndex}`}
 											onClick={closeOnMobile}
-											className={`block truncate rounded-lg px-3 py-1.5 text-sm transition-colors duration-200 ${
+											className={`block truncate rounded-lg px-3 py-2 text-xs font-medium transition-colors duration-200 ${
 												active
-													? 'bg-white/10 text-white'
-													: 'text-neutral-400 hover:bg-white/5 hover:text-white'
+													? 'bg-white font-bold text-ink-950'
+													: 'text-neutral-300 hover:bg-white/10 hover:text-white'
 											}`}
 										>
 											Chương {chapter.chapterIndex}
@@ -282,17 +343,17 @@ function ChapterReaderPage() {
 						</ul>
 					</section>
 
-					<section className="mt-5">
-						<h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-							Trang ({pages.length})
-						</h2>
-						<div className="grid grid-cols-6 gap-1.5">
+					<section>
+						<h3 className="mb-2.5 text-xs font-bold uppercase tracking-wider text-neutral-400">
+							Chuyển trang ({pages.length})
+						</h3>
+						<div className="grid grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1">
 							{pages.map((page, index) => (
 								<button
 									key={page.id}
 									type="button"
 									onClick={() => jumpToPage(index)}
-									className="rounded-md border border-white/10 bg-white/5 py-1.5 text-xs text-neutral-300 transition-colors duration-200 hover:border-white/30 hover:bg-white/10 hover:text-white"
+									className="rounded-lg border border-white/10 bg-white/5 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:border-white/30 hover:bg-white/15 hover:text-white"
 								>
 									{page.pageNumber}
 								</button>
@@ -300,30 +361,17 @@ function ChapterReaderPage() {
 						</div>
 					</section>
 
-					<Link
-						to={`/mangas/${slug}`}
-						className="mt-6 block text-center text-sm text-neutral-500 transition-colors duration-200 hover:text-white"
-					>
-						← Về trang truyện
-					</Link>
+					<div className="pt-2">
+						<Link
+							to={`/mangas/${slug}`}
+							className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 py-2.5 text-xs font-semibold text-neutral-300 transition-colors hover:bg-white/10 hover:text-white"
+						>
+							<Home className="h-4 w-4" />
+							Về trang chi tiết truyện
+						</Link>
+					</div>
 				</div>
 			</aside>
-
-			{/* Nút mở tab khi tab đang đóng. */}
-			<button
-				type="button"
-				onClick={() => setOpen(true)}
-				aria-label="Mở danh sách chương và trang"
-				aria-hidden={open}
-				tabIndex={open ? -1 : 0}
-				className={`fixed right-0 top-1/2 z-30 -translate-y-1/2 rounded-l-xl border border-r-0 border-white/15 bg-ink-900 px-2 py-4 text-neutral-300 transition-all duration-300 hover:bg-ink-800 hover:text-white ${
-					open ? 'pointer-events-none translate-x-full opacity-0' : 'translate-x-0 opacity-100'
-				}`}
-			>
-				<span className="block [writing-mode:vertical-rl] text-[11px] tracking-wider">
-					Danh sách
-				</span>
-			</button>
 		</div>
 	);
 }

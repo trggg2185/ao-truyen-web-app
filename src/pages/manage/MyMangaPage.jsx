@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
+import { Plus, Trash2, Edit3, BookOpen } from 'lucide-react';
 import { mangaApi } from '../../api';
 import { useFetch } from '../../hooks/useFetch';
 import { useMutation } from '../../hooks/useMutation';
+import { useConfirm } from '../../context/ConfirmContext';
+import { useToast } from '../../context/ToastContext';
 import { useMyGroup } from '../../hooks/useMyGroup';
 import { MANGA_STATUS_TONE, mangaStatusLabel, formatDate } from '../../utils/format';
 import PageHeader from '../../components/common/PageHeader';
@@ -16,6 +19,8 @@ function MyMangaPage() {
 	const group = mine?.transGroup;
 	const isLeader = mine?.status === 'LEADER';
 	const groupId = group?.id;
+	const confirm = useConfirm();
+	const toast = useToast();
 
 	const { data, error, loading, reload } = useFetch(
 		() =>
@@ -27,57 +32,63 @@ function MyMangaPage() {
 
 	const mutation = useMutation();
 
-	if (groupLoading || loading) return <Loading label="Đang tải..." />;
+	if (groupLoading || loading) return <Loading label="Đang tải danh sách truyện..." />;
 	if (groupError) return <ErrorMessage error={groupError} />;
 	if (error) return <ErrorMessage error={error} onRetry={reload} />;
 
 	if (!group) {
 		return (
-			<section>
+			<section className="max-w-4xl mx-auto">
 				<PageHeader title="Quản lý truyện" />
 				<EmptyState>
-					Bạn chưa là leader của nhóm dịch nào. Hãy tạo nhóm ở trang Nhóm dịch.
+					Bạn chưa tham gia nhóm dịch nào. Hãy tạo nhóm hoặc gửi yêu cầu gia nhập tại trang Nhóm dịch.
 				</EmptyState>
 			</section>
 		);
 	}
 
-	const handleDelete = (mangaId) => {
-		if (!window.confirm('Xoá truyện này? Hành động không thể hoàn tác.')) return;
+	const handleDelete = async (manga) => {
+		const ok = await confirm({
+			title: `Xác nhận xóa bộ truyện "${manga.name}"?`,
+			message: 'Toàn bộ thông tin, danh sách chương và hình ảnh của bộ truyện sẽ bị xóa vĩnh viễn. Hành động này không thể hoàn tác!',
+			confirmText: 'Xác nhận xóa truyện',
+			tone: 'danger',
+		});
+		if (!ok) return;
+
 		mutation.run(async () => {
-			await mangaApi.deleteManga(groupId, mangaId);
+			await mangaApi.deleteManga(manga.id);
+			toast.success(`Đã xóa bộ truyện "${manga.name}" thành công!`);
 			reload();
-		}, 'Đã xoá truyện.');
+		}).catch((err) => {
+			toast.error(err.message || 'Lỗi khi xóa truyện.');
+		});
 	};
 
 	return (
-		<section className="animate-fade-up">
+		<section className="animate-fade-up max-w-5xl mx-auto pb-12">
 			<PageHeader
-				title="Quản lý truyện"
-				subtitle={`${group.name} · ${data?.totalElements ?? 0} truyện`}
+				title="Quản lý truyện nhóm dịch"
+				subtitle={`${group.name} · ${data?.totalElements ?? 0} bộ truyện`}
 				actions={
 					isLeader && (
 						<Link to="/manage/mangas/new">
-							<Button>+ Thêm truyện</Button>
+							<Button className="flex items-center gap-1.5 font-semibold">
+								<Plus className="h-4 w-4" />
+								Thêm truyện mới
+							</Button>
 						</Link>
 					)
 				}
 			/>
 
-			{mutation.error && (
-				<p className="mb-4 text-sm text-red-400">
-					Lỗi ({mutation.error.code}): {mutation.error.message}
-				</p>
-			)}
-			{mutation.message && <p className="mb-4 text-sm text-emerald-400">{mutation.message}</p>}
-
 			{data?.content?.length === 0 ? (
-				<EmptyState>Nhóm bạn chưa có truyện nào.</EmptyState>
+				<EmptyState>Nhóm của bạn chưa đăng bộ truyện nào.</EmptyState>
 			) : (
-				<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900">
+				<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-xl">
 					{data?.content?.map((manga) => (
-						<li key={manga.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-							<span className="flex items-center gap-3 text-sm text-neutral-200">
+						<li key={manga.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 hover:bg-white/5 transition-colors">
+							<span className="flex items-center gap-3 text-sm font-semibold text-neutral-100">
 								{isLeader ? (
 									<Link
 										to={`/manage/mangas/${manga.slug ?? manga.id}`}
@@ -91,23 +102,31 @@ function MyMangaPage() {
 								<Badge tone={MANGA_STATUS_TONE[manga.status]}>{mangaStatusLabel(manga.status)}</Badge>
 							</span>
 							<span className="flex items-center gap-2">
-								<span className="hidden text-xs text-neutral-600 sm:block">
-									{formatDate(manga.createdAt)}
+								<span className="hidden text-xs text-neutral-400 sm:block">
+									Ngày tạo: {formatDate(manga.createdAt)}
 								</span>
 								{isLeader && (
 									<Link to={`/manage/mangas/${manga.slug ?? manga.id}`}>
-										<Button variant="ghost">Sửa</Button>
+										<Button variant="ghost" className="flex items-center gap-1 text-xs">
+											<Edit3 className="h-3.5 w-3.5" />
+											Sửa
+										</Button>
 									</Link>
 								)}
 								<Link to={`/manage/mangas/${manga.slug ?? manga.id}/chapters`}>
-									<Button variant="ghost">Chương</Button>
+									<Button variant="ghost" className="flex items-center gap-1 text-xs">
+										<BookOpen className="h-3.5 w-3.5" />
+										Chương
+									</Button>
 								</Link>
 								{isLeader && (
 									<Button
 										variant="danger"
-										onClick={() => handleDelete(manga.id)}
+										onClick={() => handleDelete(manga)}
 										disabled={mutation.loading}
+										className="flex items-center gap-1 text-xs"
 									>
+										<Trash2 className="h-3.5 w-3.5" />
 										Xoá
 									</Button>
 								)}

@@ -1,7 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { ApiError, chapterApi, mangaApi } from '../../api';
 import { useFetch } from '../../hooks/useFetch';
 import { useMutation } from '../../hooks/useMutation';
+import { useConfirm } from '../../context/ConfirmContext';
+import { useToast } from '../../context/ToastContext';
 import { formatDate } from '../../utils/format';
 import PageHeader from '../../components/common/PageHeader';
 import Loading from '../../components/common/Loading';
@@ -12,6 +15,8 @@ import Button from '../../components/common/Button';
 function ManageMangaPage() {
 	const { slug } = useParams();
 	const mutation = useMutation();
+	const confirm = useConfirm();
+	const toast = useToast();
 
 	const { data, error, loading, reload } = useFetch(
 		async () => {
@@ -32,55 +37,75 @@ function ManageMangaPage() {
 
 	const { mangaId, manga, chapters } = data ?? {};
 
-	const handleDeleteChapter = (chapterId) => {
-		if (!window.confirm('Xoá chương này?')) return;
+	const handleDeleteChapter = async (chapter) => {
+		const ok = await confirm({
+			title: `Xác nhận xóa Chương ${chapter.chapterIndex}?`,
+			message: `Hành động này sẽ xóa vĩnh viễn dữ liệu và hình ảnh của Chương ${chapter.chapterIndex}${chapter.title ? ` (${chapter.title})` : ''}.`,
+			confirmText: 'Xác nhận xóa',
+			tone: 'danger',
+		});
+		if (!ok) return;
+
 		mutation.run(async () => {
-			await chapterApi.remove(mangaId, chapterId);
+			await chapterApi.remove(mangaId, chapter.id);
+			toast.success(`Đã xóa Chương ${chapter.chapterIndex} thành công!`);
 			reload();
-		}, 'Đã xoá chương.');
+		}).catch((err) => {
+			toast.error(err.message || 'Lỗi khi xóa chương.');
+		});
 	};
 
 	return (
-		<section className="animate-fade-up">
-			<Link to="/manage" className="mb-4 inline-block text-sm text-neutral-500 hover:text-white">
-				← Quay lại quản lý truyện
+		<section className="animate-fade-up max-w-5xl mx-auto pb-12">
+			<Link
+				to="/manage"
+				className="mb-4 inline-flex items-center gap-1.5 text-xs sm:text-sm text-neutral-400 hover:text-white transition-colors"
+			>
+				<ArrowLeft className="h-4 w-4" />
+				Quay lại quản lý truyện
 			</Link>
 
 			<PageHeader
-				title="Quản lý chương"
+				title="Quản lý danh sách chương"
 				subtitle={manga?.name}
 				actions={
 					<Link to={`/manage/mangas/${slug}/chapters/new`}>
-						<Button>+ Thêm chương</Button>
+						<Button className="flex items-center gap-1.5 font-semibold">
+							<Plus className="h-4 w-4" />
+							Thêm chương mới
+						</Button>
 					</Link>
 				}
 			/>
 
-			{mutation.error && (
-				<p className="mb-4 text-sm text-red-400">
-					Lỗi ({mutation.error.code}): {mutation.error.message}
-				</p>
-			)}
-			{mutation.message && <p className="mb-4 text-sm text-emerald-400">{mutation.message}</p>}
-
 			{chapters.length === 0 ? (
 				<EmptyState>Truyện chưa có chương nào.</EmptyState>
 			) : (
-				<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900">
+				<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-xl">
 					{chapters.map((chapter) => (
-						<li key={chapter.id} className="flex items-center justify-between gap-3 px-4 py-3">
-							<span className="text-sm text-neutral-200">
-								Chương {chapter.chapterIndex}
-								{chapter.title ? ` — ${chapter.title}` : ''}
-							</span>
-							<span className="flex items-center gap-3">
-								<span className="hidden text-xs text-neutral-600 sm:block">
+						<li key={chapter.id} className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-white/5 transition-colors">
+							<div>
+								<span className="text-sm font-semibold text-neutral-100">
+									Chương {chapter.chapterIndex}
+									{chapter.title ? ` — ${chapter.title}` : ''}
+								</span>
+								<span className="block sm:hidden text-xs text-neutral-500 mt-0.5">
 									{chapter.views} lượt xem · {formatDate(chapter.updatedAt)}
 								</span>
-								<Button variant="danger" onClick={() => handleDeleteChapter(chapter.id)}>
+							</div>
+							<div className="flex items-center gap-4">
+								<span className="hidden text-xs text-neutral-400 sm:block">
+									{chapter.views} lượt xem · {formatDate(chapter.updatedAt)}
+								</span>
+								<Button
+									variant="danger"
+									onClick={() => handleDeleteChapter(chapter)}
+									className="flex items-center gap-1 text-xs"
+								>
+									<Trash2 className="h-3.5 w-3.5" />
 									Xoá
 								</Button>
-							</span>
+							</div>
 						</li>
 					))}
 				</ul>

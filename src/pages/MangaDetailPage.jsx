@@ -1,7 +1,8 @@
 import { Link, useParams } from 'react-router-dom';
+import { Eye, BookOpen, Clock } from 'lucide-react';
 import { chapterApi, ApiError, mangaApi } from '../api';
 import { useFetch } from '../hooks/useFetch';
-import { MANGA_STATUS_TONE, mangaStatusLabel, formatDate } from '../utils/format';
+import { MANGA_STATUS_TONE, mangaStatusLabel, formatRelativeTime } from '../utils/format';
 import Loading from '../components/common/Loading';
 import ErrorMessage from '../components/common/ErrorMessage';
 import Badge from '../components/common/Badge';
@@ -46,7 +47,11 @@ function MangaDetailPage() {
 
 					<div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
 						<Badge tone={MANGA_STATUS_TONE[manga.status]}>{mangaStatusLabel(manga.status)}</Badge>
-						{manga.authorsName && <span className="text-neutral-500">Tác giả: {manga.authorsName}</span>}
+						<span className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-neutral-300">
+							<Eye className="h-3.5 w-3.5 text-neutral-400" />
+							{(manga.totalViews ?? 0).toLocaleString('vi-VN')} lượt xem
+						</span>
+						{manga.authorsName && <span className="text-neutral-400">Tác giả: {manga.authorsName}</span>}
 					</div>
 
 					<div className="mt-4 flex flex-wrap gap-1.5">
@@ -113,8 +118,8 @@ function MangaDetailPage() {
 									Chương {chapter.chapterIndex}
 									{chapter.title ? ` — ${chapter.title}` : ''}
 								</span>
-								<span className="text-xs text-neutral-500">
-									{chapter.views} lượt xem · {formatDate(chapter.updatedAt)}
+								<span className="text-xs text-neutral-400">
+									{(chapter.views ?? 0).toLocaleString('vi-VN')} lượt xem · {formatRelativeTime(chapter.updatedAt)}
 								</span>
 							</Link>
 						))}

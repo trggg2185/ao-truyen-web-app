@@ -126,14 +126,20 @@ function AppLayout() {
                 <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
                     <Link
                         to="/"
-                        className="shrink-0 text-lg font-black tracking-tight text-white"
+                        className="shrink-0 flex items-center gap-2 text-xl font-black tracking-tight text-white hover:opacity-90 transition-opacity"
                     >
-                        MANGA<span className="text-neutral-500">APP</span>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-ink-950 font-black text-base shadow">
+                            Ả
+                        </span>
+                        <span>ẢO <span className="bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">TRUYỆN</span></span>
                     </Link>
 
                     <nav className="flex items-center gap-1 overflow-x-auto">
                         <NavLink to="/" className={navLinkClass} end>
                             Trang chủ
+                        </NavLink>
+                        <NavLink to="/manga" className={navLinkClass}>
+                            Truyện tranh
                         </NavLink>
                         <NavLink to="/groups" className={navLinkClass}>
                             Nhóm dịch
@@ -170,10 +176,15 @@ function AppLayout() {
                 <Outlet />
             </main>
 
-            <footer className="border-t border-white/10 py-6">
-                <p className="mx-auto max-w-6xl px-4 text-center text-xs text-neutral-600">
-                    Manga App — nền tảng đọc truyện và nhóm dịch.
-                </p>
+            <footer className="border-t border-white/10 py-8 bg-ink-950">
+                <div className="mx-auto max-w-6xl px-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
+                    <p>
+                        © {new Date().getFullYear()} <strong className="text-neutral-300">Ảo Truyện</strong> — Nền tảng đọc truyện tranh và kết nối cộng đồng dịch thuật.
+                    </p>
+                    <p className="text-neutral-600">
+                        Phiên bản giao diện tối ưu hóa tốc độ cao.
+                    </p>
+                </div>
             </footer>
         </div>
     );

@@ -8,8 +8,7 @@ export const ENDPOINTS = {
 	},
 	users: {
 		me: '/users/me',
-		profile: (username) => `/users/${encodeURIComponent(username)}`,
-		mePassword: '/users/me/password',
+		profile: (idOrUsername) => `/users/${encodeURIComponent(idOrUsername)}`,
 		meJoinRequests: '/users/me/join-requests',
 		meCreationRequests: '/users/me/creation-requests',
 	},
@@ -21,6 +20,8 @@ export const ENDPOINTS = {
 	},
 	manga: {
 		list: '/mangas',
+		recentlyUpdated: '/mangas/recently-updated',
+		newly: '/mangas/newly',
 		detail: (idOrSlug) => `/mangas/${encodeURIComponent(idOrSlug)}`,
 		management: (mangaId) => `/mangas/${mangaId}/management`,
 		create: '/mangas',
@@ -28,7 +29,7 @@ export const ENDPOINTS = {
 		// Nhóm rời truyện (giữ truyện) vs xoá hẳn truyện — spec §7.4.
 		leaveManga: (mangaId, groupId) => `/mangas/${mangaId}/transgroups/${groupId}`,
 		byGroup: (groupId) => `/transgroups/${groupId}/mangas`,
-		deleteManga: (groupId, mangaId) => `/transgroups/${groupId}/mangas/${mangaId}`,
+		deleteManga: (mangaId) => `/mangas/${mangaId}`,
 		adminList: '/admin/mangas',
 	},
 	chapters: {
@@ -44,6 +45,7 @@ export const ENDPOINTS = {
 		update: (id) => `/transgroups/${id}`,
 		remove: (id) => `/transgroups/${id}`,
 		kickMember: (groupId, userId) => `/transgroups/${groupId}/users/${userId}`,
+		transferLeader: (groupId) => `/transgroups/${groupId}/leader`,
 		adminList: '/admin/transgroups',
 	},
 	joinRequests: {
@@ -62,6 +64,8 @@ export const ENDPOINTS = {
 	admin: {
 		users: '/admin/users',
 		user: (id) => `/admin/users/${id}`,
+		ban: (id) => `/admin/users/${id}/ban`,
+		unban: (id) => `/admin/users/${id}/unban`,
 		roles: '/admin/roles',
 		role: (id) => `/admin/roles/${id}`,
 		permissions: '/admin/permissions',

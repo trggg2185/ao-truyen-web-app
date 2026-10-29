@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout.jsx';
 import HomePage from './pages/HomePage.jsx';
+import MangaListPage from './pages/MangaListPage.jsx';
 import MangaDetailPage from './pages/MangaDetailPage.jsx';
 import ChapterReaderPage from './pages/ChapterReaderPage.jsx';
 import GroupsPage from './pages/GroupsPage.jsx';
@@ -32,6 +33,8 @@ function App() {
 			<Route element={<AppLayout />}>
 				{/* Công khai */}
 				<Route index element={<HomePage />} />
+				<Route path="manga" element={<MangaListPage />} />
+				<Route path="mangas" element={<Navigate to="/manga" replace />} />
 				<Route path="mangas/:slug" element={<MangaDetailPage />} />
 				<Route path="groups" element={<GroupsPage />} />
 				<Route path="groups/:slug" element={<GroupDetailPage />} />

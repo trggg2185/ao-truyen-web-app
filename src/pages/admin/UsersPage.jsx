@@ -2,123 +2,100 @@ import { useState } from 'react';
 import { userApi } from '../../api';
 import { useFetch } from '../../hooks/useFetch';
 import { useMutation } from '../../hooks/useMutation';
+import { useConfirm } from '../../context/ConfirmContext';
+import { useToast } from '../../context/ToastContext';
 import Loading from '../../components/common/Loading';
 import ErrorMessage from '../../components/common/ErrorMessage';
 import EmptyState from '../../components/common/EmptyState';
 import Button from '../../components/common/Button';
-import Input from '../../components/common/Input';
+import Badge from '../../components/common/Badge';
 import Pagination from '../../components/common/Pagination';
 
-const ROLE_NAMES = ['USER', 'TRANSLATOR', 'ADMIN'];
+const STATUS = {
+	ACTIVE: { label: 'Hoạt động', tone: 'green' },
+	BANNED: { label: 'Đã khoá', tone: 'red' },
+	DELETED: { label: 'Đã xoá', tone: 'neutral' },
+};
 
 function UsersPage() {
 	const [page, setPage] = useState(0);
-	const [showCreate, setShowCreate] = useState(false);
-	const [form, setForm] = useState({ username: '', password: '', email: '', roles: [] });
 	const mutation = useMutation();
+	const confirm = useConfirm();
+	const toast = useToast();
 
 	const { data, error, loading, reload } = useFetch(
 		() => userApi.list({ page, size: 20, sortBy: 'createdAt' }),
 		[page],
 	);
 
-	const toggleRole = (name) =>
-		setForm((f) => ({
-			...f,
-			roles: f.roles.includes(name) ? f.roles.filter((r) => r !== name) : [...f.roles, name],
-		}));
+	const handleBan = async (user) => {
+		const ok = await confirm({
+			title: `Xác nhận khóa người dùng "${user.displayName || user.username}"?`,
+			message: 'Người dùng sẽ bị thu hồi phiên đăng nhập ngay lập tức và không thể tiếp tục truy cập các chức năng của hệ thống.',
+			confirmText: 'Khóa tài khoản',
+			tone: 'danger',
+		});
+		if (!ok) return;
 
-	const submit = (e) => {
-		e.preventDefault();
 		mutation.run(async () => {
-			await userApi.create(form);
-			setForm({ username: '', password: '', email: '', roles: [] });
-			setShowCreate(false);
+			await userApi.ban(user.id);
+			toast.success(`Đã khóa tài khoản "${user.displayName || user.username}".`);
 			reload();
-		}, 'Đã tạo người dùng.');
+		}).catch((err) => {
+			toast.error(err.message || 'Lỗi khi khóa người dùng.');
+		});
 	};
 
-	const handleDelete = (id) => {
-		if (!window.confirm('Xoá người dùng này?')) return;
+	const handleUnban = async (user) => {
+		const ok = await confirm({
+			title: `Xác nhận mở khóa cho "${user.displayName || user.username}"?`,
+			message: 'Người dùng sẽ có thể đăng nhập và sử dụng hệ thống bình thường.',
+			confirmText: 'Mở khóa tài khoản',
+			tone: 'primary',
+		});
+		if (!ok) return;
+
 		mutation.run(async () => {
-			await userApi.remove(id);
+			await userApi.unban(user.id);
+			toast.success(`Đã mở khóa tài khoản "${user.displayName || user.username}".`);
 			reload();
-		}, 'Đã xoá người dùng.');
+		}).catch((err) => {
+			toast.error(err.message || 'Lỗi khi mở khóa người dùng.');
+		});
 	};
 
 	return (
 		<div>
-			<div className="mb-4 flex justify-end">
-				<Button onClick={() => setShowCreate((v) => !v)}>
-					{showCreate ? 'Đóng' : '+ Tạo người dùng'}
-				</Button>
-			</div>
-
-			{showCreate && (
-				<form onSubmit={submit} className="mb-6 grid gap-4 rounded-2xl border border-white/10 bg-ink-900 p-6 sm:grid-cols-2">
-					<Input
-						label="Username"
-						value={form.username}
-						onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-					/>
-					<Input
-						label="Password"
-						type="password"
-						value={form.password}
-						onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-					/>
-					<Input
-						label="Email"
-						value={form.email}
-						onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-					/>
-					<div className="flex flex-wrap items-end gap-2">
-						{ROLE_NAMES.map((name) => (
-							<button
-								key={name}
-								type="button"
-								onClick={() => toggleRole(name)}
-								className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors duration-200 ${
-									form.roles.includes(name)
-										? 'border-white/40 bg-white text-ink-950'
-										: 'border-white/10 text-neutral-400 hover:border-white/25 hover:text-white'
-								}`}
-							>
-								{name}
-							</button>
-						))}
-					</div>
-					<div className="sm:col-span-2">
-						<Button type="submit" disabled={mutation.loading}>
-							{mutation.loading ? 'Đang tạo...' : 'Tạo'}
-						</Button>
-					</div>
-				</form>
-			)}
-
-			{mutation.error && (
-				<p className="mb-4 text-sm text-red-400">
-					Lỗi ({mutation.error.code}): {mutation.error.message}
-				</p>
-			)}
-
 			{loading ? (
 				<Loading />
 			) : error ? (
 				<ErrorMessage error={error} onRetry={reload} />
 			) : data?.content?.length === 0 ? (
-				<EmptyState>Chưa có người dùng.</EmptyState>
+				<EmptyState>Chưa có người dùng nào.</EmptyState>
 			) : (
 				<>
-					<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900">
+					<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-xl">
 						{data.content.map((user) => (
-							<li key={user.id} className="flex items-center justify-between px-4 py-3">
-								<span className="text-sm text-neutral-200">
-									{user.displayName || user.username}
+							<li key={user.id} className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-white/5 transition-colors">
+								<span className="flex items-center gap-2 text-sm text-neutral-200">
+									<span className="font-semibold text-white">{user.displayName || user.username}</span>
+									<span className="text-xs text-neutral-500">@{user.username}</span>
+									<Badge tone={STATUS[user.status]?.tone}>
+										{STATUS[user.status]?.label ?? user.status}
+									</Badge>
 								</span>
-								<Button variant="danger" onClick={() => handleDelete(user.id)}>
-									Xoá
-								</Button>
+								<span className="flex gap-2">
+									{user.status === 'ACTIVE' && (
+										<Button variant="danger" onClick={() => handleBan(user)} className="text-xs">
+											Khóa
+										</Button>
+									)}
+									{user.status === 'BANNED' && (
+										<Button variant="ghost" onClick={() => handleUnban(user)} className="text-xs">
+											Mở khóa
+										</Button>
+									)}
+								</span>
 							</li>
 						))}
 					</ul>

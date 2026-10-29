@@ -4,6 +4,8 @@ import { categoryApi, mangaApi } from '../../api';
 import { resolveMangaId } from '../../utils/resolveUrl';
 import { useFetch } from '../../hooks/useFetch';
 import { useMutation } from '../../hooks/useMutation';
+import { useConfirm } from '../../context/ConfirmContext';
+import { useToast } from '../../context/ToastContext';
 import { MANGA_STATUS } from '../../utils/format';
 import PageHeader from '../../components/common/PageHeader';
 import Loading from '../../components/common/Loading';
@@ -20,6 +22,8 @@ function MangaEditorPage() {
 	const { slug } = useParams();
 	const navigate = useNavigate();
 	const isEdit = Boolean(slug);
+	const confirm = useConfirm();
+	const toast = useToast();
 
 	const { data: categories } = useFetch(() => categoryApi.list(), []);
 	const resolved = useFetch(
@@ -27,7 +31,6 @@ function MangaEditorPage() {
 		[slug],
 	);
 	const mangaId = resolved.data;
-	// Sửa truyện phải dùng endpoint riêng cho leader (spec §7.4).
 	const { data: manga, loading, error } = useFetch(
 		() => (mangaId ? mangaApi.getManagement(mangaId) : Promise.resolve(null)),
 		[mangaId],
@@ -45,7 +48,6 @@ function MangaEditorPage() {
 
 	useEffect(() => {
 		if (!manga) return;
-		// eslint-disable-next-line react-hooks/set-state-in-effect -- nạp dữ liệu server vào form một lần
 		setForm({
 			name: manga.name ?? '',
 			authorsName: manga.authorsName ?? '',
@@ -72,8 +74,13 @@ function MangaEditorPage() {
 				: [...f.categoryIds, id],
 		}));
 
-	const submit = (e) => {
+	const submit = async (e) => {
 		e.preventDefault();
+
+		if (!form.name.trim()) {
+			toast.warning('Vui lòng nhập tên truyện.');
+			return;
+		}
 
 		if (isEdit) {
 			const originalCategoryIds = manga?.categories?.map((category) => category.id) ?? [];
@@ -85,77 +92,96 @@ function MangaEditorPage() {
 				form.categoryIds.length === originalCategoryIds.length &&
 				form.categoryIds.every((id) => originalCategoryIds.includes(id));
 			if (unchanged) {
-				mutation.setMessage('Không có thay đổi nào.');
+				toast.info('Không có thay đổi nào cần lưu.');
 				return;
 			}
 		}
 
+		const ok = await confirm({
+			title: isEdit ? 'Xác nhận cập nhật truyện?' : 'Xác nhận tạo truyện mới?',
+			message: isEdit
+				? `Bạn có chắc muốn cập nhật thông tin bộ truyện "${form.name}" không?`
+				: `Bạn có chắc muốn tạo mới bộ truyện "${form.name}" không?`,
+			confirmText: isEdit ? 'Cập nhật ngay' : 'Tạo truyện',
+			tone: 'primary',
+		});
+
+		if (!ok) return;
+
 		mutation.run(async () => {
 			const payload = {
-				name: form.name,
+				name: form.name.trim(),
 				status: form.status,
-				description: form.description,
+				description: form.description.trim(),
 				categoryIds: form.categoryIds,
 			};
 
 			if (isEdit) {
-				// Chỉ gửi ảnh bìa khi thực sự đổi: backend promote lại URL mỗi khi nhận
-				// field này, gửi lại URL cũ (đã promote) sẽ bị coi là không hợp lệ.
 				if (form.coverImageUrl && form.coverImageUrl !== (manga?.coverImageUrl ?? '')) {
 					payload.coverImageUrl = form.coverImageUrl;
 				}
 			} else {
-				// Tạo mới: chỉ gửi bìa/tác giả khi có giá trị.
 				if (form.coverImageUrl) payload.coverImageUrl = form.coverImageUrl;
-				if (form.authorsName) payload.authorsName = form.authorsName;
+				if (form.authorsName) payload.authorsName = form.authorsName.trim();
 			}
 
-			if (isEdit) await mangaApi.update(mangaId, payload);
-			else await mangaApi.create(payload);
+			if (isEdit) {
+				await mangaApi.update(mangaId, payload);
+				toast.success(`Cập nhật truyện "${form.name}" thành công!`);
+			} else {
+				await mangaApi.create(payload);
+				toast.success(`Đã tạo bộ truyện "${form.name}" thành công!`);
+			}
 			navigate('/manage');
+		}).catch((err) => {
+			toast.error(err.message || 'Lỗi khi lưu truyện.');
 		});
 	};
 
 	return (
-		<section className="animate-fade-up">
+		<section className="animate-fade-up max-w-4xl mx-auto pb-12">
 			<PageHeader
-				title={isEdit ? 'Chi tiết truyện' : 'Tạo truyện mới'}
-				subtitle={isEdit ? 'Cập nhật thông tin truyện' : undefined}
+				title={isEdit ? 'Chỉnh sửa truyện' : 'Tạo truyện mới'}
+				subtitle={isEdit ? 'Cập nhật các thông tin cơ bản của bộ truyện' : 'Đăng ký truyện mới vào nhóm dịch'}
 				actions={
 					isEdit && (
 						<Link to={`/manage/mangas/${slug}/chapters`}>
-							<Button variant="ghost">Quản lý chương</Button>
+							<Button variant="ghost">Quản lý chương truyện</Button>
 						</Link>
 					)
 				}
 			/>
 
-			<form onSubmit={submit} className="mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-white/10 bg-ink-900 p-6">
+			<form onSubmit={submit} className="space-y-5 rounded-3xl border border-white/10 bg-ink-900 p-6 sm:p-8 shadow-2xl">
 				<Input
-					label="Tên truyện"
+					label="Tên truyện (*)"
+					placeholder="Nhập tên truyện..."
 					value={form.name}
 					onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+					required
 				/>
 				{!isEdit && (
 					<Input
 						label="Tác giả"
+						placeholder="Nhập tên tác giả..."
 						value={form.authorsName}
 						onChange={(e) => setForm((f) => ({ ...f, authorsName: e.target.value }))}
 					/>
 				)}
 				<ImageUploadField
+					label="Ảnh bìa truyện (Tỷ lệ 3:4)"
 					value={form.coverImageUrl}
 					onChange={(url) => setForm((f) => ({ ...f, coverImageUrl: url }))}
 				/>
 				<Select
-					label="Tình trạng"
+					label="Tình trạng phát hành"
 					options={STATUS_OPTIONS}
 					value={form.status}
 					onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
 				/>
 
 				<div>
-					<span className="mb-1.5 block text-sm text-neutral-400">Thể loại</span>
+					<span className="mb-2 block text-sm font-semibold text-neutral-300">Thể loại truyện</span>
 					<div className="flex flex-wrap gap-2">
 						{categories?.map((category) => {
 							const active = form.categoryIds.includes(category.id);
@@ -164,10 +190,10 @@ function MangaEditorPage() {
 									key={category.id}
 									type="button"
 									onClick={() => toggleCategory(category.id)}
-									className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors duration-200 ${
+									className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
 										active
-											? 'border-white/40 bg-white text-ink-950'
-											: 'border-white/10 text-neutral-400 hover:border-white/25 hover:text-white'
+											? 'border-white/50 bg-white text-ink-950 shadow-md'
+											: 'border-white/10 text-neutral-400 hover:border-white/30 hover:text-white'
 									}`}
 								>
 									{category.name}
@@ -178,22 +204,22 @@ function MangaEditorPage() {
 				</div>
 
 				<Textarea
-					label="Mô tả (tối đa 500 ký tự)"
+					label="Mô tả nội dung (Tối đa 500 ký tự)"
+					placeholder="Tóm tắt ngắn gọn nội dung bộ truyện..."
 					maxLength={500}
+					rows={4}
 					value={form.description}
 					onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
 				/>
 
-				{mutation.message && <p className="text-sm text-neutral-400">{mutation.message}</p>}
-				{mutation.error && (
-					<p className="text-sm text-red-400">
-						Lỗi ({mutation.error.code}): {mutation.error.message}
-					</p>
-				)}
-
-				<Button type="submit" disabled={mutation.loading}>
-					{mutation.loading ? 'Đang lưu...' : isEdit ? 'Lưu thay đổi' : 'Tạo truyện'}
-				</Button>
+				<div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+					<Link to="/manage">
+						<Button variant="ghost">Hủy bỏ</Button>
+					</Link>
+					<Button type="submit" disabled={mutation.loading} className="min-w-[130px] font-bold">
+						{mutation.loading ? 'Đang lưu...' : isEdit ? 'Lưu thay đổi' : 'Tạo truyện ngay'}
+					</Button>
+				</div>
 			</form>
 		</section>
 	);

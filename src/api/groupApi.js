@@ -13,5 +13,7 @@ export const groupApi = {
 	remove: (id) => axiosClient.delete(ENDPOINTS.transGroups.remove(id)),
 	kickMember: (groupId, userId) =>
 		axiosClient.delete(ENDPOINTS.transGroups.kickMember(groupId, userId)),
+	transferLeader: (groupId, newLeaderId) =>
+		axiosClient.patch(ENDPOINTS.transGroups.transferLeader(groupId), { newLeaderId }),
 	adminList: async (params) => axiosClient.get(ENDPOINTS.transGroups.adminList, { params }),
 };

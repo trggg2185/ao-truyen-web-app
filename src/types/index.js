@@ -9,6 +9,7 @@
  * @typedef {'PENDING'|'APPROVED'|'REJECTED'} GroupJoinRequestStatus
  * @typedef {'PENDING'|'APPROVED'|'REJECTD'} GroupCreationRequestStatus
  * @typedef {'ADMIN'|'USER'|'TRANSLATOR'} RoleName
+ * @typedef {'ACTIVE'|'BANNED'|'DELETED'} UserStatus
  *
  * @typedef {Object} PaginatedResponse
  * @property {number} currentPage 1-based
@@ -25,7 +26,7 @@
  * @typedef {Object} SocialAuthRequest
  * @property {string} credential Google ID token
  *
- * @typedef {Object} AuthenticationResponse
+ * @typedef {Object} AuthResponse
  * @property {boolean} authenticated
  * @property {string} token
  * @property {number} expiresIn giây
@@ -40,6 +41,7 @@
  * @property {string|null} email
  * @property {string|null} facebook
  * @property {string|null} discord
+ * @property {UserStatus} status
  * @property {string|null} bio
  * @property {string|null} avatar
  * @property {string} createdAt
@@ -49,6 +51,7 @@
  * @property {string} username
  * @property {string|null} displayName
  * @property {string|null} avatar
+ * @property {UserStatus} status
  *
  * @typedef {Object} PublicUserProfileResponse
  * @property {string} id
@@ -58,6 +61,7 @@
  * @property {string|null} bio
  * @property {string|null} facebook
  * @property {string|null} discord
+ * @property {UserStatus} status
  * @property {string} createdAt
  * @property {TransGroupSummaryResponse|null} transGroup nhóm APPROVED (member hoặc leader)
  *
@@ -68,17 +72,13 @@
  * @property {string|null} email
  * @property {string|null} facebook
  * @property {string|null} discord
+ * @property {string|null} avatar
  * @property {string|null} bio
- * @property {RoleResponse[]} roles
- * @property {string|null} transGroupId
+ * @property {UserStatus} status
+ * @property {RoleSummaryResponse[]} roles
+ * @property {TransGroupSummaryResponse|null} transGroup
  * @property {string} createdAt
  * @property {string} updatedAt
- *
- * @typedef {Object} UserCreationRequest
- * @property {string} username 3..50
- * @property {string} password 5..30
- * @property {string} [email]
- * @property {string[]} [roles]
  *
  * @typedef {Object} UserUpdateForm
  * @property {string} [displayName] <=50
@@ -86,10 +86,6 @@
  * @property {string} [discord]
  * @property {string} [bio] <=300
  * @property {File} [avatar]
- *
- * @typedef {Object} UserPasswordRequest
- * @property {string} oldPassword
- * @property {string} newPassword
  *
  * @typedef {Object} CategoryRequest
  * @property {string} name 2..100
@@ -122,32 +118,22 @@
  * @property {string} id
  * @property {string} name
  * @property {string} slug
- * @property {string} [coverImageUrl]
+ * @property {string|null} coverImageUrl
+ * @property {string|null} authorsName
  * @property {MangaStatus} status
  * @property {string|null} description
  * @property {CategoryResponse[]} categories
  * @property {TransGroupSummaryResponse[]} transGroups
+ * @property {string} createdAt
  * @property {string} updatedAt
  *
  * @typedef {Object} MangaSummaryResponse
  * @property {string} id
  * @property {string} name
  * @property {string} slug
- * @property {string} [coverImageUrl]
+ * @property {string|null} coverImageUrl
  * @property {string|null} authorsName
  * @property {MangaStatus} status
- * @property {string|null} description
- * @property {string} createdAt
- *
- * @typedef {Object} MangaDetailsResponse
- * @property {string} id
- * @property {string} name
- * @property {string} slug
- * @property {string} [coverImageUrl]
- * @property {string|null} authorsName
- * @property {MangaStatus} status
- * @property {CategoryResponse[]} categories
- * @property {TransGroupSummaryResponse[]} transGroups
  * @property {string|null} description
  * @property {string} createdAt
  *
@@ -155,7 +141,8 @@
  * @property {string} id
  * @property {string} name
  * @property {string} slug
- * @property {string} [coverImageUrl]
+ * @property {string|null} coverImageUrl
+ * @property {string|null} authorsName
  * @property {MangaStatus} status
  * @property {string|null} description
  * @property {CategoryResponse[]} categories
@@ -193,8 +180,6 @@
  * @property {string} id
  * @property {number} pageNumber
  * @property {string} imageUrl
- * @property {string} createdAt
- * @property {string} updatedAt
  *
  * @typedef {Object} TransGroupSummaryResponse
  * @property {string} id
@@ -220,31 +205,17 @@
  * @property {string|null} description
  * @property {string} createdAt
  *
- * @typedef {Object} TransGroupDetailsResponse
- * @property {string} id
- * @property {UserSummaryResponse} leader
- * @property {string} name
- * @property {string} slug
- * @property {string|null} coverImageUrl
- * @property {TransGroupStatus} status
- * @property {MangaSummaryResponse[]} translatedMangas
- * @property {UserSummaryResponse[]} members
- * @property {string|null} description
- * @property {string} createdAt
- *
  * @typedef {Object} TransGroupOfUserResponse
  * @property {TransGroupSummaryResponse} [transGroup]
  * @property {MyGroupStatus} status
  *
  * @typedef {Object} CreationRequest
  * @property {string} groupName 5..50
- * @property {string} [coverImageUrl] <=500
  * @property {string} [description] <=300
  *
  * @typedef {Object} CreationRequestResponse
  * @property {string} id
  * @property {string} groupName
- * @property {string} [coverImageUrl]
  * @property {string|null} creatorName
  * @property {GroupCreationRequestStatus} status
  * @property {string|null} description
@@ -262,6 +233,10 @@
  * @property {string} name <=20
  * @property {string} [description] <=100
  * @property {string[]} permissions
+ *
+ * @typedef {Object} RoleSummaryResponse
+ * @property {string} name
+ * @property {string|null} description
  *
  * @typedef {Object} RoleResponse
  * @property {string} name

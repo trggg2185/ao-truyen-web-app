@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { creationRequestApi } from '../../api';
 import { useFetch } from '../../hooks/useFetch';
 import { useMutation } from '../../hooks/useMutation';
+import { useConfirm } from '../../context/ConfirmContext';
+import { useToast } from '../../context/ToastContext';
 import { CREATION_REQUEST_STATUS, CREATION_REQUEST_TONE } from '../../utils/format';
 import Loading from '../../components/common/Loading';
 import ErrorMessage from '../../components/common/ErrorMessage';
@@ -14,6 +16,8 @@ const FILTERS = ['', ...Object.keys(CREATION_REQUEST_STATUS)];
 function CreationRequestsPage() {
 	const [status, setStatus] = useState('');
 	const mutation = useMutation();
+	const confirm = useConfirm();
+	const toast = useToast();
 
 	const { data, error, loading, reload } = useFetch(
 		() =>
@@ -25,19 +29,33 @@ function CreationRequestsPage() {
 		[status],
 	);
 
-	const handleRequest = (requestId, action) => {
-		const run = action === 'approve' ? creationRequestApi.approve : creationRequestApi.reject;
+	const handleRequest = async (request, action) => {
+		const isApprove = action === 'approve';
+		const ok = await confirm({
+			title: isApprove ? `Duyệt tạo nhóm "${request.groupName}"?` : `Từ chối tạo nhóm "${request.groupName}"?`,
+			message: isApprove
+				? `Xác nhận duyệt nhóm dịch "${request.groupName}" do ${request.creatorName || 'thành viên'} tạo? Nhóm sẽ được kích hoạt ngay lập tức.`
+				: `Xác nhận từ chối yêu cầu tạo nhóm "${request.groupName}"?`,
+			confirmText: isApprove ? 'Duyệt thành lập nhóm' : 'Từ chối yêu cầu',
+			tone: isApprove ? 'primary' : 'danger',
+		});
+		if (!ok) return;
+
+		const run = isApprove ? creationRequestApi.approve : creationRequestApi.reject;
 		mutation.run(async () => {
-			await run(requestId);
+			await run(request.id);
+			toast.success(isApprove ? `Đã duyệt thành lập nhóm "${request.groupName}".` : `Đã từ chối tạo nhóm "${request.groupName}".`);
 			reload();
-		}, action === 'approve' ? 'Đã duyệt yêu cầu.' : 'Đã từ chối yêu cầu.');
+		}).catch((err) => {
+			toast.error(err.message || 'Lỗi khi xử lý yêu cầu tạo nhóm.');
+		});
 	};
 
 	const chipClass = (active) =>
-		`rounded-full border px-3.5 py-1.5 text-sm transition-colors duration-200 ${
+		`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
 			active
-				? 'border-white/40 bg-white text-ink-950'
-				: 'border-white/10 text-neutral-400 hover:border-white/25 hover:text-white'
+				? 'border-white/50 bg-white text-ink-950 shadow-md'
+				: 'border-white/10 text-neutral-400 hover:border-white/30 hover:text-white'
 		}`;
 
 	return (
@@ -55,39 +73,37 @@ function CreationRequestsPage() {
 				))}
 			</div>
 
-			{mutation.error && (
-				<p className="mb-4 text-sm text-red-400">
-					Lỗi ({mutation.error.code}): {mutation.error.message}
-				</p>
-			)}
-			{mutation.message && <p className="mb-4 text-sm text-emerald-400">{mutation.message}</p>}
-
 			{loading ? (
 				<Loading />
 			) : error ? (
 				<ErrorMessage error={error} onRetry={reload} />
 			) : data?.content?.length === 0 ? (
-				<EmptyState>Không có yêu cầu.</EmptyState>
+				<EmptyState>Không có yêu cầu nào.</EmptyState>
 			) : (
-				<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900">
+				<ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-xl">
 					{data.content.map((request) => (
-						<li key={request.id} className="flex items-center justify-between gap-3 px-4 py-3">
-							<span className="flex flex-wrap items-center gap-3 text-sm text-neutral-200">
-								{request.groupName}
-								<span className="text-xs text-neutral-500">
-									{request.creatorName ? `bởi ${request.creatorName}` : ''}
-								</span>
-								<Badge tone={CREATION_REQUEST_TONE[request.status]}>
-									{CREATION_REQUEST_STATUS[request.status]}
-								</Badge>
-							</span>
+						<li key={request.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 hover:bg-white/5 transition-colors">
+							<div>
+								<div className="flex items-center gap-3 text-sm font-semibold text-neutral-100">
+									<span>{request.groupName}</span>
+									<Badge tone={CREATION_REQUEST_TONE[request.status]}>
+										{CREATION_REQUEST_STATUS[request.status]}
+									</Badge>
+								</div>
+								<p className="text-xs text-neutral-400 mt-1">
+									{request.creatorName ? `Người yêu cầu: ${request.creatorName}` : ''}
+									{request.description ? ` • ${request.description}` : ''}
+								</p>
+							</div>
 							{request.status === 'PENDING' && (
-								<span className="flex gap-2">
-									<Button onClick={() => handleRequest(request.id, 'approve')}>Duyệt</Button>
-									<Button variant="ghost" onClick={() => handleRequest(request.id, 'reject')}>
+								<div className="flex gap-2">
+									<Button onClick={() => handleRequest(request, 'approve')} className="text-xs">
+										Duyệt
+									</Button>
+									<Button variant="ghost" onClick={() => handleRequest(request, 'reject')} className="text-xs">
 										Từ chối
 									</Button>
-								</span>
+								</div>
 							)}
 						</li>
 					))}

@@ -4,7 +4,7 @@ import { toFormData } from '../utils/formData';
 
 export const userApi = {
 	/* --- public profile --- */
-	getProfile: (username) => axiosClient.get(ENDPOINTS.users.profile(username)),
+	getProfile: (idOrUsername) => axiosClient.get(ENDPOINTS.users.profile(idOrUsername)),
 
 	/* --- current user --- */
 	getMe: () => axiosClient.get(ENDPOINTS.users.me),
@@ -14,7 +14,7 @@ export const userApi = {
 			toFormData({ displayName, facebook, discord, bio, avatar }),
 			multipart(),
 		),
-	changePassword: (payload) => axiosClient.patch(ENDPOINTS.users.mePassword, payload),
+	deleteMe: () => axiosClient.delete(ENDPOINTS.users.me),
 	getMyJoinRequests: (params) => axiosClient.get(ENDPOINTS.users.meJoinRequests, { params }),
 	getMyCreationRequests: (params) =>
 		axiosClient.get(ENDPOINTS.users.meCreationRequests, { params }),
@@ -22,8 +22,8 @@ export const userApi = {
 	/* --- admin --- */
 	list: (params) => axiosClient.get(ENDPOINTS.admin.users, { params }),
 	get: (id) => axiosClient.get(ENDPOINTS.admin.user(id)),
-	create: (payload) => axiosClient.post(ENDPOINTS.admin.users, payload),
 	update: (id, fields) =>
 		axiosClient.patch(ENDPOINTS.admin.user(id), toFormData(fields), multipart()),
-	remove: (id) => axiosClient.delete(ENDPOINTS.admin.user(id)),
+	ban: (id) => axiosClient.patch(ENDPOINTS.admin.ban(id)),
+	unban: (id) => axiosClient.patch(ENDPOINTS.admin.unban(id)),
 };

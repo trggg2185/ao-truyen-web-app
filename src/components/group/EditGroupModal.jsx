@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
+import { Upload } from 'lucide-react';
 import { groupApi } from '../../api';
 import { useMutation } from '../../hooks/useMutation';
+import { useConfirm } from '../../context/ConfirmContext';
+import { useToast } from '../../context/ToastContext';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
 import Input from '../common/Input';
 import Textarea from '../common/Textarea';
 
-// Chọn file ảnh và giữ nguyên File để gửi multipart (backend nhận avatarFile/coverFile).
-function ImageFileField({ label, file, current, boxClass = 'h-20 w-28', onChange }) {
+function ImageFileField({ label, file, current, boxClass = 'h-24 w-36', onChange }) {
 	const [preview, setPreview] = useState(null);
 
 	useEffect(
@@ -28,19 +30,20 @@ function ImageFileField({ label, file, current, boxClass = 'h-20 w-28', onChange
 
 	return (
 		<div>
-			<span className="mb-1.5 block text-sm text-neutral-400">{label}</span>
+			<span className="mb-1.5 block text-sm font-semibold text-neutral-300">{label}</span>
 			<div className="flex items-center gap-4">
 				<div
-					className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-ink-800 ${boxClass}`}
+					className={`flex items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-ink-950 shadow-inner ${boxClass}`}
 				>
 					{shown ? (
 						<img src={shown} alt={label} className="h-full w-full object-cover" />
 					) : (
-						<span className="text-xs text-neutral-600">Trống</span>
+						<span className="text-xs text-neutral-600">Chưa có ảnh</span>
 					)}
 				</div>
-				<label className="inline-block cursor-pointer rounded-lg border border-white/15 px-3.5 py-2 text-sm text-neutral-200 transition-colors duration-200 hover:border-white/30 hover:bg-white/5">
-					{file ? 'Đổi ảnh' : 'Chọn ảnh'}
+				<label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2 text-xs font-semibold text-neutral-200 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white">
+					<Upload className="h-3.5 w-3.5 text-emerald-400" />
+					{shown ? 'Đổi ảnh khác' : 'Chọn ảnh'}
 					<input type="file" accept="image/*" className="hidden" onChange={pick} />
 				</label>
 			</div>
@@ -56,17 +59,17 @@ export default function EditGroupModal({ group, avatar, onClose, onSaved }) {
 		avatarFile: null,
 	});
 	const mutation = useMutation();
+	const confirm = useConfirm();
+	const toast = useToast();
 
-	const submit = (event) => {
+	const submit = async (event) => {
 		event.preventDefault();
-		// Trường trống thì bỏ khỏi request: backend validate name 5..50 ký tự nên chuỗi rỗng sẽ bị lỗi.
 		const payload = new FormData();
 		if (form.name.trim()) payload.append('name', form.name);
 		if (form.description.trim()) payload.append('description', form.description);
 		if (form.coverFile) payload.append('coverFile', form.coverFile);
 		if (form.avatarFile) payload.append('avatarFile', form.avatarFile);
 
-		// Không đổi field nào / mọi field đều trống -> không gọi API.
 		const unchanged =
 			!form.coverFile &&
 			!form.avatarFile &&
@@ -75,13 +78,24 @@ export default function EditGroupModal({ group, avatar, onClose, onSaved }) {
 		const hasField =
 			payload.has('name') || payload.has('description') || payload.has('coverFile') || payload.has('avatarFile');
 		if (unchanged || !hasField) {
-			mutation.setMessage('Không có thay đổi nào.');
+			toast.info('Không có thay đổi nào.');
 			return;
 		}
 
+		const ok = await confirm({
+			title: 'Lưu thay đổi nhóm dịch?',
+			message: `Bạn có chắc muốn cập nhật thông tin nhóm "${group.name}" không?`,
+			confirmText: 'Lưu thay đổi',
+			tone: 'primary',
+		});
+		if (!ok) return;
+
 		mutation.run(async () => {
 			await groupApi.update(group.id, payload);
+			toast.success('Đã cập nhật thông tin nhóm dịch thành công!');
 			onSaved();
+		}).catch((err) => {
+			toast.error(err.message || 'Lỗi khi cập nhật nhóm dịch.');
 		});
 	};
 
@@ -89,9 +103,10 @@ export default function EditGroupModal({ group, avatar, onClose, onSaved }) {
 		<Modal title="Chỉnh sửa thông tin nhóm" onClose={onClose} maxWidth="max-w-lg">
 			<form onSubmit={submit} className="space-y-4">
 				<Input
-					label="Tên nhóm (5..50 ký tự)"
+					label="Tên nhóm (5..50 ký tự) (*)"
 					value={form.name}
 					onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+					required
 				/>
 				<ImageFileField
 					label="Ảnh bìa nhóm"
@@ -100,32 +115,26 @@ export default function EditGroupModal({ group, avatar, onClose, onSaved }) {
 					onChange={(file) => setForm((f) => ({ ...f, coverFile: file }))}
 				/>
 				<ImageFileField
-					label="Avatar nhóm"
+					label="Ảnh đại diện nhóm (Avatar)"
 					current={avatar}
 					file={form.avatarFile}
 					boxClass="h-20 w-20"
 					onChange={(file) => setForm((f) => ({ ...f, avatarFile: file }))}
 				/>
 				<Textarea
-					label="Mô tả (tối đa 300 ký tự)"
+					label="Mô tả nhóm (Tối đa 300 ký tự)"
 					maxLength={300}
+					rows={3}
 					value={form.description}
 					onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
 				/>
 
-				{mutation.message && <p className="text-sm text-neutral-400">{mutation.message}</p>}
-				{mutation.error && (
-					<p className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-300">
-						Lỗi ({mutation.error.code}): {mutation.error.message}
-					</p>
-				)}
-
-				<div className="flex justify-end gap-2">
+				<div className="flex justify-end gap-2 pt-2">
 					<Button variant="ghost" onClick={onClose}>
-						Huỷ
+						Huỷ bỏ
 					</Button>
-					<Button type="submit" disabled={mutation.loading}>
-						{mutation.loading ? 'Đang lưu...' : 'Lưu'}
+					<Button type="submit" disabled={mutation.loading} className="font-semibold">
+						{mutation.loading ? 'Đang lưu...' : 'Lưu thay đổi'}
 					</Button>
 				</div>
 			</form>

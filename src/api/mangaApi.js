@@ -8,6 +8,28 @@ export const mangaApi = {
 		rememberMangas(data?.content);
 		return data;
 	},
+	// Top 20 truyện mới cập nhật chương gần đây (GET /mangas/recently-updated)
+	getTop20: async () => {
+		const data = await axiosClient.get(ENDPOINTS.manga.recentlyUpdated);
+		rememberMangas(Array.isArray(data) ? data : data?.content);
+		return data;
+	},
+	getRecentlyUpdated: async () => {
+		const data = await axiosClient.get(ENDPOINTS.manga.recentlyUpdated);
+		rememberMangas(Array.isArray(data) ? data : data?.content);
+		return data;
+	},
+	// Top 10 truyện mới tạo có ít nhất 1 chương (GET /mangas/newly)
+	getTop10: async () => {
+		const data = await axiosClient.get(ENDPOINTS.manga.newly);
+		rememberMangas(Array.isArray(data) ? data : data?.content);
+		return data;
+	},
+	getNewly: async () => {
+		const data = await axiosClient.get(ENDPOINTS.manga.newly);
+		rememberMangas(Array.isArray(data) ? data : data?.content);
+		return data;
+	},
 	// GET /mangas/{idOrSlug} — backend nhận cả UUID và slug.
 	get: async (idOrSlug) => {
 		const manga = await axiosClient.get(ENDPOINTS.manga.detail(idOrSlug));
@@ -31,8 +53,7 @@ export const mangaApi = {
 	leaveManga: (mangaId, groupId) =>
 		axiosClient.delete(ENDPOINTS.manga.leaveManga(mangaId, groupId)),
 	// xoá hẳn manga (leader nhóm hoặc admin)
-	deleteManga: (groupId, mangaId) =>
-		axiosClient.delete(ENDPOINTS.manga.deleteManga(groupId, mangaId)),
+	deleteManga: (mangaId) => axiosClient.delete(ENDPOINTS.manga.deleteManga(mangaId)),
 	adminList: async (params) => {
 		const data = await axiosClient.get(ENDPOINTS.manga.adminList, { params });
 		rememberMangas(data?.content);
